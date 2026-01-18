@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  PLAYER
+  AGENT
+  SUPER_AGENT
+  MANAGER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  code      String   @unique // The Player Code from Excel
+  name      String?
+  password  String?  // Nullable until registered
+  role      Role     @default(PLAYER)
+  
+  // Hierarchy
+  clubId        String?
+  agentId       String?
+  agent         User?   @relation("AgentPlayers", fields: [agentId], references: [id])
+  players       User[]  @relation("AgentPlayers")
+  
+  superAgentId  String?
+  superAgent    User?   @relation("SuperAgentItems", fields: [superAgentId], references: [id]) // Can be agents or players
+  subordinates  User[]  @relation("SuperAgentItems")
+
+  // Financials
+  balance       Float   @default(0)
+  rakeback      Float   @default(0) // Percentage
+  
+  gameSessions  GameSession[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Cycle {
+  id        String   @id @default(cuid())
+  startDate DateTime @default(now())
+  endDate   DateTime?
+  status    String   @default("OPEN") // OPEN, CLOSED
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GameSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  date      DateTime
+  tableName String
+  gameType  String?
+  
+  buyIn     Float
+  cashOut   Float
+  pnl       Float // Profit and Loss
+  
+  // Extra fields from excel
+  hands     Int?
+  rake      Float?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ImportLog {
+  id          String   @id @default(cuid())
+  fileName    String
+  periodStart DateTime
+  periodEnd   DateTime
+  
+  status      String   @default("SUCCESS")
+  
+  createdAt   DateTime @default(now())
+}
