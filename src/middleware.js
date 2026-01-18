@@ -9,6 +9,9 @@ export default withAuth(
         ) {
             return NextResponse.rewrite(new URL("/dashboard", req.url));
         }
+        if (req.nextUrl.pathname === "/") {
+            return NextResponse.redirect(new URL("/dashboard", req.url));
+        }
     },
     {
         callbacks: {
@@ -17,4 +20,4 @@ export default withAuth(
     }
 );
 
-export const config = { matcher: ["/dashboard/:path*", "/admin/:path*"] };
+export const config = { matcher: ["/", "/dashboard/:path*", "/admin/:path*"] };

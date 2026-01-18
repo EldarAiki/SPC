@@ -196,8 +196,6 @@ export async function parseAndImport(buffer) {
 
             // Check for Table Name
             if (cellA && cellA.includes('Table Name :')) {
-                // Extract Table Name: "Table Name : NLH 1/2 B.P , Creator : ..."
-                // Valid extraction
                 currentTable = cellA.split(',')[0].replace('Table Name :', '').trim();
                 return;
             }
@@ -206,7 +204,7 @@ export async function parseAndImport(buffer) {
 
             // Check for Data Row
             const playerId = row.getCell(3).value?.toString()?.trim();
-            if (playerId && /^\d+$/.test(playerId)) { // Numeric ID
+            if (playerId && /^[\d-]+$/.test(playerId)) { // Numeric ID allowing hyphens
                 // It's a player row
                 const buyIn = parseFloat(row.getCell(5).value || 0);
                 const cashOut = parseFloat(row.getCell(6).value || 0);
@@ -227,18 +225,19 @@ export async function parseAndImport(buffer) {
             }
         });
 
-        // Batch Insert? Or Sequential to find User ID.
-        // GameSession needs User Internal ID (UUID), not Code.
-        // We need to map Code -> UUID.
-        // We assume Users are already imported/exist from Step 1.
+        console.log(`[Parser] Found ${gameRows.length} game rows.`);
 
         // Create Map
         const codes = gameRows.map(r => r.userId);
         const uniqueCodes = [...new Set(codes)];
+        console.log(`[Parser] Unique player codes found: ${uniqueCodes.length}`);
+
         const users = await prisma.user.findMany({
             where: { code: { in: uniqueCodes } },
             select: { id: true, code: true }
         });
+
+        console.log(`[Parser] Matched ${users.length} users in DB.`);
         const codeToId = {};
         users.forEach(u => codeToId[u.code] = u.id);
 
@@ -259,36 +258,31 @@ export async function parseAndImport(buffer) {
                 });
                 importedGames++;
 
-                // Update User Balance (Incremental? No, we need absolute balance or recalculate)
-                // User said "balance and statistics". "parse data which manager will upload on a daily base... details about buy in/cash out".
-                // "Balance" usually implies running total.
-                // We should update balance by adding PnL?
-                // Or does the file contain "Current Balance"?
-                // The file has "Player P&L" in Union Member Statistics row.
-                // Maybe that's the *Total* PnL or just for that period?
-                // "Union Member Statistics" (Step 1) Row 3 has "Player P&L" header (Col 11).
-                // Row 5 has subheaders.
-                // Logic: `balance += game.pnl + rakeback`.
-                // We should update balance here.
-                // `await prisma.user.update(...)`.
-
                 await prisma.user.update({
                     where: { id: dbUserId },
                     data: {
                         balance: { increment: game.pnl }
-                        // Note: This naive increment relies on "Delete" logic working perfectly for duplication.
-                        // If we delete session, we should decrement balance?
-                        // Ah! If we re-upload, we deleted the session record but the User Balance was already incremented last time!
-                        // CRITICAL: We need to handle balance correction on delete.
                     }
                 });
+            } else {
+                // console.warn(`[Parser] User Code ${game.userId} not found in DB. Skipping game.`);
             }
         }
 
-        // FIXED LOGIC for Balance:
-        // When deleting sessions in Step 2, we must DECREMENT the user balance for those sessions.
-        // So fetch sessions to be deleted first.
+        console.log(`[Parser] Successfully imported ${importedGames} games.`);
     }
+
+    // --- 3. Create Import Log ---
+    try {
+        await prisma.importLog.create({
+            data: {
+                fileName: "Upload", // Ideally passed as arg
+                periodStart: new Date(), // Placeholder
+                periodEnd: new Date(), // Placeholder
+                status: "SUCCESS"
+            }
+        });
+    } catch (e) { console.error("Failed to create ImportLog", e); }
 
     return { users: importedUsers, games: importedGames };
 }
