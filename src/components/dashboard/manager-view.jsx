@@ -1,22 +1,20 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import AgentView from "./agent-view"; // Managers reuse Agent view for their dashboard
+import AgentView from "./agent-view";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Upload, RefreshCw, Layers, Users, Power, Key } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
+import UserManagement from "./user-management";
 import { useState } from "react";
-import { Upload, FileSpreadsheet, RefreshCw } from "lucide-react";
 
 export default function ManagerView({ user, games, subPlayers }) {
+    const { t } = useLanguage();
     const [uploading, setUploading] = useState(false);
-
-    // Upload Handler
-    const handleUpload = async (e) => {
-        // e is click event, but input is separate. We need state for file.
-        // Simplified: use ref or state.
-    };
+    const [cycleLoading, setCycleLoading] = useState(false);
 
     const onFileChange = async (e) => {
         const file = e.target.files?.[0];
@@ -33,44 +31,63 @@ export default function ManagerView({ user, games, subPlayers }) {
             });
             const data = await res.json();
             if (data.success) {
-                alert("Upload successful! " + data.message);
-                window.location.reload(); // Refresh to show new data
+                alert(t("upload_success") + " " + data.message);
+                window.location.reload();
             } else {
-                alert("Upload failed: " + data.error);
+                alert(t("upload_failed") + ": " + data.error);
             }
         } catch (err) {
-            alert("Upload error: " + err.message);
+            alert(t("upload_failed") + ": " + err.message);
         } finally {
             setUploading(false);
+        }
+    };
+
+    const handleCloseCycle = async () => {
+        if (!confirm("Are you sure you want to close the current cycle? Information will be archived.")) return;
+
+        setCycleLoading(true);
+        try {
+            const res = await fetch("/api/admin/cycle", { method: "POST" });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert("Error: " + data.error);
+            }
+        } catch (e) {
+            alert("Unexpected error.");
+        } finally {
+            setCycleLoading(false);
         }
     };
 
     return (
         <Tabs defaultValue="overview" className="space-y-4">
             <TabsList>
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="admin">Admin Panel</TabsTrigger>
+                <TabsTrigger value="overview">{t("overview")}</TabsTrigger>
+                <TabsTrigger value="admin">{t("admin_panel")}</TabsTrigger>
+                <TabsTrigger value="users">{t("manage_users")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview">
-                {/* Managers see everything Agents see, but for the whole club (subPlayers passed will be all users) */}
                 <AgentView user={user} games={games} subPlayers={subPlayers} />
             </TabsContent>
 
             <TabsContent value="admin" className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <h2 className="text-3xl font-bold tracking-tight">Admin Administration</h2>
+                    <h2 className="text-3xl font-bold tracking-tight">{t("admin_panel")}</h2>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <Card>
+                    <Card className="border-none shadow-md">
                         <CardHeader>
-                            <CardTitle>Data Upload</CardTitle>
-                            <CardDescription>Upload daily Excel reports</CardDescription>
+                            <CardTitle>{t("data_upload")}</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="grid w-full max-w-sm items-center gap-1.5">
-                                <Label htmlFor="picture">Report File (XLSX)</Label>
+                                <Label htmlFor="picture">{t("report_file")}</Label>
                                 <div className="flex gap-2">
                                     <Input
                                         id="picture"
@@ -87,29 +104,62 @@ export default function ManagerView({ user, games, subPlayers }) {
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Cycle Management</CardTitle>
-                            <CardDescription>Manage reporting cycles</CardDescription>
+                    <Card className="border-none shadow-md">
+                        <CardHeader className="flex flex-row items-center gap-2">
+                            <Layers className="h-5 w-5 text-blue-600" />
+                            <CardTitle>{t("cycle_mgmt")}</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium">Current Cycle: Active</div>
-                                <Button variant="destructive" className="w-full">Close Current Cycle</Button>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg">
+                                <div>
+                                    <p className="text-sm font-medium">{t("current_cycle")}</p>
+                                    <p className="text-xs text-muted-foreground">Status: OPEN</p>
+                                </div>
+                                <Button
+                                    onClick={handleCloseCycle}
+                                    disabled={cycleLoading}
+                                    variant="destructive"
+                                    size="sm"
+                                    className="gap-2"
+                                >
+                                    <Power className="h-4 w-4" />
+                                    {t("close_cycle")}
+                                </Button>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>User Management</CardTitle>
-                            <CardDescription>Reset passwords and more</CardDescription>
+                    <Card className="border-none shadow-md">
+                        <CardHeader className="flex flex-row items-center gap-2">
+                            <Users className="h-5 w-5 text-blue-600" />
+                            <CardTitle>{t("manage_users")}</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <Button variant="outline" className="w-full">Manage Users</Button>
+                            <p className="text-sm text-muted-foreground mb-4">
+                                Reset passwords, adjust roles, or view individual user activity logs.
+                            </p>
+                            <Button variant="outline" className="w-full">
+                                {t("manage_users")}
+                            </Button>
                         </CardContent>
                     </Card>
                 </div>
+            </TabsContent>
+            <TabsContent value="users">
+                <Card className="border-none shadow-lg">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Users className="h-5 w-5 text-blue-600" />
+                            {t("manage_users")}
+                        </CardTitle>
+                        <CardDescription>
+                            Reset passwords and manage all system users.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <UserManagement />
+                    </CardContent>
+                </Card>
             </TabsContent>
         </Tabs>
     );

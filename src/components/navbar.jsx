@@ -13,8 +13,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
+import { useLanguage } from "@/lib/i18n";
+
 export default function Navbar() {
     const { data: session } = useSession();
+    const { t, language, toggleLanguage } = useLanguage();
     const user = session?.user;
 
     const handleLogout = () => {
@@ -28,14 +31,20 @@ export default function Navbar() {
                 <div className="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
                     SPC
                 </div>
-                <span className="font-bold text-xl hidden sm:inline-block text-primary">Poker Club</span>
+                <span className="font-bold text-xl hidden sm:inline-block text-primary">{t("club_name")}</span>
             </div>
 
             {/* Right Side Actions */}
             <div className="flex items-center gap-4">
-                {/* Localization Mockup */}
-                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary">
+                {/* Localization Button */}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-primary flex items-center gap-2"
+                    onClick={toggleLanguage}
+                >
                     <Globe className="h-5 w-5" />
+                    <span className="uppercase text-xs font-bold">{language === "en" ? "עב" : "EN"}</span>
                 </Button>
 
                 {/* User Menu */}
@@ -53,9 +62,9 @@ export default function Navbar() {
                     <DropdownMenuContent className="w-56" align="end" forceMount>
                         <DropdownMenuLabel className="font-normal">
                             <div className="flex flex-col space-y-1">
-                                <p className="text-sm font-medium leading-none">{user?.name || "Player"}</p>
+                                <p className="text-sm font-medium leading-none">{user?.name || t("status")}</p>
                                 <p className="text-xs leading-none text-muted-foreground">
-                                    Code: {user?.code}
+                                    {t("code")}: {user?.code}
                                 </p>
                                 <p className="text-xs leading-none text-blue-600 font-semibold mt-1">
                                     {user?.role}
@@ -65,7 +74,7 @@ export default function Navbar() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={handleLogout} className="text-red-500 hover:text-red-600 cursor-pointer">
                             <LogOut className="mr-2 h-4 w-4" />
-                            <span>Log out</span>
+                            <span>{t("logout")}</span>
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>

@@ -12,6 +12,14 @@ export default function LoginPage() {
                     </div>
                 </div>
                 <LoginForm />
+                <div className="mt-6 text-center">
+                    <p className="text-sm text-muted-foreground">
+                        First time here?{" "}
+                        <a href="/register" className="text-blue-600 hover:underline font-semibold">
+                            Activate your account
+                        </a>
+                    </p>
+                </div>
             </div>
         </div>
     );

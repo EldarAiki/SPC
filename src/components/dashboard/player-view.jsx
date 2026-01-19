@@ -9,119 +9,177 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Download, History } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
+import ExcelJS from "exceljs";
+import { useState } from "react";
+import DetailsModal from "./details-modal";
 
-export default function PlayerView({ user, games, cycle }) {
-    // Calculate specific stats if not provided pre-calculated
-    // Assuming user.balance is the main balance
-    // games is an array of GameSession
+export default function PlayerView({ user, games }) {
+    const { t } = useLanguage();
+    const [showDetails, setShowDetails] = useState(false);
+
+    const handleExport = async () => {
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('My Games');
+
+        sheet.columns = [
+            { header: t('date'), key: 'date', width: 20 },
+            { header: t('type'), key: 'type', width: 15 },
+            { header: t('table'), key: 'table', width: 25 },
+            { header: t('buy_in'), key: 'buyIn', width: 15 },
+            { header: t('cash_out'), key: 'cashOut', width: 15 },
+            { header: t('pnl'), key: 'pnl', width: 15 },
+        ];
+
+        games?.forEach(game => {
+            sheet.addRow({
+                date: new Date(game.date).toLocaleDateString(),
+                type: game.gameType || "Ring",
+                table: game.tableName,
+                buyIn: game.buyIn,
+                cashOut: game.cashOut,
+                pnl: game.pnl
+            });
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `Games_Report_${user.code}.xlsx`;
+        anchor.click();
+        window.URL.revokeObjectURL(url);
+    };
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-                <div className="flex items-center space-x-2">
-                    <Button variant="outline" size="sm">
-                        <Download className="mr-2 h-4 w-4" />
-                        Export Excel
+                <h2 className="text-3xl font-bold tracking-tight text-primary">{t("personal_stats")}</h2>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center gap-2"
+                        onClick={() => setShowDetails(true)}
+                    >
+                        <History className="h-4 w-4" />
+                        {t("details")}
+                    </Button>
+                    <Button onClick={handleExport} variant="outline" size="sm" className="bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 flex items-center gap-2">
+                        <Download className="h-4 w-4" />
+                        {t("export_excel")}
                     </Button>
                 </div>
             </div>
 
-            {/* Stats Cards */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
+                <Card className="bg-white dark:bg-zinc-900 border-none shadow-md overflow-hidden group">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Balance</CardTitle>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            className="h-4 w-4 text-muted-foreground"
-                        >
-                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                        </svg>
+                        <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">
+                            Name
+                        </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{user.balance?.toFixed(2)}</div>
-                        <p className="text-xs text-muted-foreground">
-                            Current Cycle Balance
-                        </p>
+                        <div className="text-2xl font-bold">
+                            {user.name || "N/A"}
+                        </div>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className="bg-white dark:bg-zinc-900 border-none shadow-md overflow-hidden group">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Rakeback</CardTitle>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            className="h-4 w-4 text-muted-foreground"
-                        >
-                            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                            <circle cx="8.5" cy="7" r="4" />
-                            <line x1="20" x2="23" y1="8" y2="11" />
-                            <line x1="23" x2="20" y1="11" y2="11" />
-
-                        </svg>
+                        <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">
+                            {t("code")}
+                        </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{user.rakeback}%</div>
-                        <p className="text-xs text-muted-foreground">
-                            Your Rakeback Deal
-                        </p>
+                        <div className="text-2xl font-bold text-blue-600">
+                            {user.code}
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="bg-white dark:bg-zinc-900 border-none shadow-md overflow-hidden group">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">
+                            {t("balance")}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className={`text-2xl font-bold ${user.balance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {user.balance?.toLocaleString()}
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="bg-white dark:bg-zinc-900 border-none shadow-md overflow-hidden group">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">
+                            {t("rakeback")}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-blue-600">
+                            {user.rakeback}%
+                        </div>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Games Table */}
-            <Card>
+            <Card className="border-none shadow-lg">
                 <CardHeader>
-                    <CardTitle>Recent Games</CardTitle>
+                    <CardTitle>{t("recent_games")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <Table>
                         <TableHeader>
-                            <TableRow>
-                                <TableHead>Date</TableHead>
-                                <TableHead>Type</TableHead>
-                                <TableHead>Table</TableHead>
-                                <TableHead className="text-right">Buy In</TableHead>
-                                <TableHead className="text-right">Cash Out</TableHead>
-                                <TableHead className="text-right">P&L</TableHead>
+                            <TableRow className="hover:bg-transparent border-primary/10">
+                                <TableHead>{t("date")}</TableHead>
+                                <TableHead>{t("type")}</TableHead>
+                                <TableHead>{t("table")}</TableHead>
+                                <TableHead className="text-right">{t("buy_in")}</TableHead>
+                                <TableHead className="text-right">{t("cash_out")}</TableHead>
+                                <TableHead className="text-right">{t("pnl")}</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {games && games.map((game) => (
-                                <TableRow key={game.id}>
-                                    <TableCell>{new Date(game.date).toLocaleDateString()}</TableCell>
-                                    <TableCell>{game.gameType || "NLH"}</TableCell>
-                                    <TableCell>{game.tableName}</TableCell>
-                                    <TableCell className="text-right">{game.buyIn}</TableCell>
-                                    <TableCell className="text-right">{game.cashOut}</TableCell>
-                                    <TableCell className={`text-right font-medium ${game.pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
-                                        {game.pnl}
+                            {!games || games.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground italic">
+                                        No recent games found.
                                     </TableCell>
                                 </TableRow>
-                            ))}
-                            {!games || games.length === 0 && (
-                                <TableRow>
-                                    <TableCell colSpan={6} className="text-center h-24">No games found in this cycle.</TableCell>
-                                </TableRow>
+                            ) : (
+                                games.map((game) => (
+                                    <TableRow key={game.id} className="group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                                        <TableCell className="font-medium">
+                                            {new Date(game.date).toLocaleDateString()}
+                                        </TableCell>
+                                        <TableCell>
+                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                                                {game.gameType || "Ring"}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>{game.tableName}</TableCell>
+                                        <TableCell className="text-right">{game.buyIn?.toLocaleString()}</TableCell>
+                                        <TableCell className="text-right">{game.cashOut?.toLocaleString()}</TableCell>
+                                        <TableCell className={`text-right font-bold ${game.pnl >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                            {game.pnl >= 0 ? '+' : ''}{game.pnl?.toLocaleString()}
+                                        </TableCell>
+                                    </TableRow>
+                                ))
                             )}
                         </TableBody>
                     </Table>
                 </CardContent>
             </Card>
+
+            <DetailsModal
+                userId={user.id}
+                isOpen={showDetails}
+                onClose={() => setShowDetails(false)}
+                currentUser={user}
+            />
         </div>
     );
 }
