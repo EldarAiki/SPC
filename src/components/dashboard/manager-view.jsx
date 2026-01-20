@@ -2,19 +2,20 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AgentView from "./agent-view";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, RefreshCw, Layers, Users, Power, Key } from "lucide-react";
+import { Upload, RefreshCw, Layers, Users, Power } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
-import UserManagement from "./user-management";
 import { useState } from "react";
+import { ManageUsersModal } from "./manage-users-modal";
 
 export default function ManagerView({ user, games, subPlayers }) {
     const { t } = useLanguage();
     const [uploading, setUploading] = useState(false);
     const [cycleLoading, setCycleLoading] = useState(false);
+    const [manageUsersOpen, setManageUsersOpen] = useState(false);
 
     const onFileChange = async (e) => {
         const file = e.target.files?.[0];
@@ -68,7 +69,6 @@ export default function ManagerView({ user, games, subPlayers }) {
             <TabsList>
                 <TabsTrigger value="overview">{t("overview")}</TabsTrigger>
                 <TabsTrigger value="admin">{t("admin_panel")}</TabsTrigger>
-                <TabsTrigger value="users">{t("manage_users")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview">
@@ -138,29 +138,22 @@ export default function ManagerView({ user, games, subPlayers }) {
                             <p className="text-sm text-muted-foreground mb-4">
                                 Reset passwords, adjust roles, or view individual user activity logs.
                             </p>
-                            <Button variant="outline" className="w-full">
+                            <Button
+                                variant="outline"
+                                className="w-full"
+                                onClick={() => setManageUsersOpen(true)}
+                            >
                                 {t("manage_users")}
                             </Button>
                         </CardContent>
                     </Card>
                 </div>
             </TabsContent>
-            <TabsContent value="users">
-                <Card className="border-none shadow-lg">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Users className="h-5 w-5 text-blue-600" />
-                            {t("manage_users")}
-                        </CardTitle>
-                        <CardDescription>
-                            Reset passwords and manage all system users.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <UserManagement />
-                    </CardContent>
-                </Card>
-            </TabsContent>
+
+            <ManageUsersModal
+                open={manageUsersOpen}
+                onOpenChange={setManageUsersOpen}
+            />
         </Tabs>
     );
 }
