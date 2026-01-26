@@ -36,20 +36,35 @@ export default async function DashboardPage() {
     // Role Based Data Fetching
     let subPlayers = [];
 
-    if (user.role === "AGENT" || user.role === "SUPER_AGENT") {
-        // Fetch direct players and maybe sub-agents players if super agent
-        // Simplified: Fetch all downstream
-        subPlayers = await prisma.user.findMany({
-            where: {
-                OR: [
-                    { agentId: user.id },
-                    { superAgentId: user.id }
-                ]
-            }
-        });
-    } else if (user.role === "MANAGER") {
-        subPlayers = await prisma.user.findMany({
+    if (user.role === "AGENT" || user.role === "SUPER_AGENT" || user.role === "MANAGER") {
+        const where = user.role === "MANAGER" ? {} : {
+            OR: [
+                { agentId: user.id },
+                { superAgentId: user.id }
+            ]
+        };
+
+        const rawSubPlayers = await prisma.user.findMany({
+            where,
+            include: {
+                agent: { select: { name: true, code: true } },
+                superAgent: { select: { name: true, code: true } },
+                gameSessions: {
+                    select: { rake: true }
+                }
+            },
             orderBy: { code: 'asc' }
+        });
+
+        subPlayers = rawSubPlayers.map(p => {
+            const totalRake = p.gameSessions.reduce((sum, gs) => sum + (gs.rake || 0), 0);
+            const totalRakebackAmount = (totalRake * (p.rakeback || 0)) / 100;
+            // Remove gameSessions to keep response size manageable if many users
+            const { gameSessions, ...userWithoutGames } = p;
+            return {
+                ...userWithoutGames,
+                totalRakebackAmount
+            };
         });
     }
 

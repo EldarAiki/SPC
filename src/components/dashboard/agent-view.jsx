@@ -35,6 +35,7 @@ export default function AgentView({ user, games, subPlayers }) {
     const [newRakeback, setNewRakeback] = useState("");
     const [updating, setUpdating] = useState(false);
     const [detailUserId, setDetailUserId] = useState(null);
+    const [activitySearchTerm, setActivitySearchTerm] = useState("");
 
     const handleUpdateRakeback = async () => {
         if (!selectedPlayer || newRakeback === "") return;
@@ -69,6 +70,36 @@ export default function AgentView({ user, games, subPlayers }) {
         p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.code?.toLowerCase().includes(searchTerm.toLowerCase())
     ) || [];
+
+    const filteredActivity = subPlayers?.filter(p =>
+        p.role === 'PLAYER' && // Only show PLAYERS in this view
+        (p.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
+            p.agent?.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
+            p.superAgent?.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
+            p.code?.toLowerCase().includes(activitySearchTerm.toLowerCase()))
+    ) || [];
+
+    const getSafeName = (entity) => {
+        if (!entity) return "";
+        if (entity.name && entity.name !== "-" && entity.name.trim() !== "") return entity.name;
+        return entity.code || "";
+    };
+
+    const sortedActivity = [...filteredActivity].sort((a, b) => {
+        const saA = getSafeName(a.superAgent) || "ZZZZ";
+        const saB = getSafeName(b.superAgent) || "ZZZZ";
+        if (saA !== saB) return saA.localeCompare(saB);
+
+        const aA = getSafeName(a.agent) || "ZZZZ";
+        const aB = getSafeName(b.agent) || "ZZZZ";
+        if (aA !== aB) return aA.localeCompare(aB);
+
+        return (a.name || "").localeCompare(b.name || "");
+    });
+
+    // Helper for grouping labels
+    let lastSAId = null;
+    let lastAgentId = null;
 
     const handleDownloadReport = async () => {
         const workbook = new ExcelJS.Workbook();
@@ -110,6 +141,9 @@ export default function AgentView({ user, games, subPlayers }) {
                 </TabsTrigger>
                 <TabsTrigger value="club" className="data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-950">
                     {t("my_club")}
+                </TabsTrigger>
+                <TabsTrigger value="activity" className="data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-950">
+                    {t("club_activity")}
                 </TabsTrigger>
             </TabsList>
 
@@ -193,6 +227,84 @@ export default function AgentView({ user, games, subPlayers }) {
                                     <TableRow>
                                         <TableCell colSpan={6} className="text-center py-10 text-muted-foreground italic">
                                             No players found.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+            </TabsContent>
+
+            <TabsContent value="activity" className="space-y-4">
+                <div className="flex flex-col md:flex-row justify-between gap-4 items-center">
+                    <div className="relative w-full md:max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder={t("search_players")}
+                            className="bg-white dark:bg-zinc-900 border-none shadow-sm pl-9"
+                            value={activitySearchTerm}
+                            onChange={(e) => setActivitySearchTerm(e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                <Card className="border-none shadow-lg">
+                    <CardHeader>
+                        <CardTitle>{t("club_activity")}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="hover:bg-transparent border-primary/10">
+                                    <TableHead>{t("super_agent")}</TableHead>
+                                    <TableHead>{t("agent")}</TableHead>
+                                    <TableHead>{t("player")}</TableHead>
+                                    <TableHead className="text-right">{t("balance")}</TableHead>
+                                    <TableHead className="text-right">{t("total_rakeback_amount")}</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {sortedActivity.map((player) => {
+                                    // Grouping Logic
+                                    const saName = getSafeName(player.superAgent);
+                                    const agentName = getSafeName(player.agent);
+
+                                    const showSA = saName !== lastSAId;
+                                    const showAgent = (agentName !== lastAgentId) || showSA;
+
+                                    lastSAId = saName;
+                                    lastAgentId = agentName;
+
+                                    return (
+                                        <TableRow key={player.id} className="group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                                            <TableCell className="font-bold text-zinc-500">
+                                                {showSA ? (saName || "-") : ""}
+                                            </TableCell>
+                                            <TableCell className="font-medium">
+                                                {showAgent ? (agentName || "-") : ""}
+                                            </TableCell>
+                                            <TableCell>{player.name || player.code}</TableCell>
+                                            <TableCell className={`text-right font-bold ${player.balance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                {player.balance?.toLocaleString()}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-blue-600 font-semibold">
+                                                        {player.totalRakebackAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </span>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        ({player.rakeback}%)
+                                                    </span>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                                {sortedActivity.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={5} className="text-center py-10 text-muted-foreground italic">
+                                            No activity found.
                                         </TableCell>
                                     </TableRow>
                                 )}
