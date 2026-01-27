@@ -52,11 +52,20 @@ export async function GET(req, { params }) {
             });
         }
 
-        // Always fetch games for the user to show their performance
+        // Fetch current cycle
+        const currentCycle = await prisma.cycle.findFirst({
+            where: { status: "OPEN" },
+            orderBy: { startDate: 'desc' }
+        });
+
+        // Always fetch games for the user to show their performance (Current Cycle Only)
         details.games = await prisma.gameSession.findMany({
-            where: { userId: targetUser.id },
+            where: {
+                userId: targetUser.id,
+                cycleId: currentCycle?.id
+            },
             orderBy: { date: 'desc' },
-            take: 50 // Limit to 50 for now
+            take: 50
         });
 
         return NextResponse.json(details);

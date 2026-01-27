@@ -131,6 +131,18 @@ export async function parseAndImport(buffer) {
         const dateStart = new Date(sessionDate); dateStart.setHours(0, 0, 0, 0);
         const dateEnd = new Date(sessionDate); dateEnd.setHours(23, 59, 59, 999);
 
+        // --- NEW: Ensure Cycle Exists ---
+        let currentCycle = await prisma.cycle.findFirst({
+            where: { status: 'OPEN' },
+            orderBy: { startDate: 'desc' }
+        });
+
+        if (!currentCycle) {
+            currentCycle = await prisma.cycle.create({
+                data: { status: 'OPEN' }
+            });
+        }
+
         // --- Optimization: Aggregate Revert Balance ---
         // Instead of looping sessions to decrement, aggregate PnL per user
         const sessionsToDelete = await prisma.gameSession.groupBy({
@@ -208,7 +220,8 @@ export async function parseAndImport(buffer) {
                     cashOut: game.cashOut,
                     pnl: game.pnl,
                     hands: game.hands,
-                    rake: game.rake
+                    rake: game.rake,
+                    cycleId: currentCycle.id
                 });
 
                 // 2. Aggregate Balance (Don't call DB yet)

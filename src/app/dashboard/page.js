@@ -25,12 +25,22 @@ export default async function DashboardPage() {
         return <div>User not found</div>;
     }
 
+    // Fetch Current Cycle
+    const currentCycle = await prisma.cycle.findFirst({
+        where: { status: "OPEN" },
+        orderBy: { startDate: 'desc' }
+    });
+
+    const currentCycleId = currentCycle?.id;
+
     // Fetch games for the user (Current Cycle)
-    // TODO: Define Cycle logic. For now fetch top 20 games.
     const games = await prisma.gameSession.findMany({
-        where: { userId: user.id },
+        where: {
+            userId: user.id,
+            cycleId: currentCycleId
+        },
         orderBy: { date: 'desc' },
-        take: 20,
+        take: 50,
     });
 
     // Role Based Data Fetching
@@ -50,6 +60,7 @@ export default async function DashboardPage() {
                 agent: { select: { name: true, code: true } },
                 superAgent: { select: { name: true, code: true } },
                 gameSessions: {
+                    where: { cycleId: currentCycleId },
                     select: { rake: true }
                 }
             },

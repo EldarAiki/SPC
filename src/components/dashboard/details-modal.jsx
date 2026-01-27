@@ -132,7 +132,12 @@ export default function DetailsModal({ userId, isOpen, onClose, currentUser }) {
                         {/* Conditional Table Rendering */}
                         {data.subPlayers.length > 0 ? (
                             <div className="space-y-2">
-                                <h3 className="font-semibold">{t("my_club")} ({data.subPlayers.length})</h3>
+                                <h3 className="font-semibold flex justify-between items-center">
+                                    <span>{t("my_club")} ({data.subPlayers.length})</span>
+                                    <span className={data.subPlayers.reduce((sum, p) => sum + (p.balance || 0), 0) >= 0 ? "text-green-600" : "text-red-500"}>
+                                        {t("total_balance")}: {data.subPlayers.reduce((sum, p) => sum + (p.balance || 0), 0).toLocaleString()}
+                                    </span>
+                                </h3>
                                 <div className="border rounded-lg overflow-hidden">
                                     <Table>
                                         <TableHeader className="bg-zinc-50 dark:bg-zinc-900">

@@ -17,18 +17,18 @@ export async function POST(req) {
             orderBy: { startDate: 'desc' }
         });
 
-        if (!currentCycle) {
-            return NextResponse.json({ error: "No open cycle found" }, { status: 404 });
+        if (currentCycle) {
+            // 2. Close it
+            await prisma.cycle.update({
+                where: { id: currentCycle.id },
+                data: {
+                    endDate: new Date(),
+                    status: "CLOSED"
+                }
+            });
         }
 
-        // 2. Close it
-        await prisma.cycle.update({
-            where: { id: currentCycle.id },
-            data: {
-                endDate: new Date(),
-                status: "CLOSED"
-            }
-        });
+        // 3. Create a new one (regardless if one was closed or not, we start fresh)
 
         // 3. Create a new one
         await prisma.cycle.create({
