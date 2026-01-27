@@ -26,7 +26,6 @@ export default function PlayerView({ user, games }) {
 
         sheet.columns = [
             { header: t('date'), key: 'date', width: 20 },
-            { header: t('type'), key: 'type', width: 15 },
             { header: t('table'), key: 'table', width: 25 },
             { header: t('buy_in'), key: 'buyIn', width: 15 },
             { header: t('cash_out'), key: 'cashOut', width: 15 },
@@ -36,7 +35,6 @@ export default function PlayerView({ user, games }) {
         games?.forEach(game => {
             sheet.addRow({
                 date: new Date(game.date).toLocaleDateString(),
-                type: game.gameType || "Ring",
                 table: game.tableName,
                 buyIn: game.buyIn,
                 cashOut: game.cashOut,
@@ -135,7 +133,6 @@ export default function PlayerView({ user, games }) {
                         <TableHeader>
                             <TableRow className="hover:bg-transparent border-primary/10">
                                 <TableHead>{t("date")}</TableHead>
-                                <TableHead>{t("type")}</TableHead>
                                 <TableHead>{t("table")}</TableHead>
                                 <TableHead className="text-right">{t("buy_in")}</TableHead>
                                 <TableHead className="text-right">{t("cash_out")}</TableHead>
@@ -154,11 +151,6 @@ export default function PlayerView({ user, games }) {
                                     <TableRow key={game.id} className="group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
                                         <TableCell className="font-medium">
                                             {new Date(game.date).toLocaleDateString()}
-                                        </TableCell>
-                                        <TableCell>
-                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                                                {game.gameType || "Ring"}
-                                            </span>
                                         </TableCell>
                                         <TableCell>{game.tableName}</TableCell>
                                         <TableCell className="text-right">{game.buyIn?.toLocaleString()}</TableCell>
