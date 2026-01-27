@@ -5,7 +5,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 const dictionary = {
     en: {
         // Navbar
-        club_name: "Poker Club",
+        club_name: "Social Poker Club",
         logout: "Log out",
         code: "Code",
         login: "Login",
@@ -24,6 +24,7 @@ const dictionary = {
         super_agent: "Super Agent",
         agent: "Agent",
         player: "Player",
+        total_balance: "Total Balance",
         recent_games: "Recent Games",
         export_excel: "Export Excel",
         date: "Date",
@@ -53,7 +54,7 @@ const dictionary = {
     },
     he: {
         // Navbar
-        club_name: "מועדון פוקר",
+        club_name: "  מועדון פוקר חברתי",
         logout: "התנתק",
         code: "קוד",
         login: "התחברות",
@@ -72,6 +73,7 @@ const dictionary = {
         super_agent: "סופר אייגנט",
         agent: "אייגנט",
         player: "שחקן",
+        total_balance: "מאזן כולל",
         recent_games: "משחקים אחרונים",
         export_excel: "ייצוא לאקסל",
         date: "תאריך",

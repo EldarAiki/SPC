@@ -71,6 +71,8 @@ export default function AgentView({ user, games, subPlayers }) {
         p.code?.toLowerCase().includes(searchTerm.toLowerCase())
     ) || [];
 
+    const totalBalance = filteredPlayers.reduce((sum, p) => sum + (p.balance || 0), 0);
+
     const filteredActivity = subPlayers?.filter(p =>
         p.role === 'PLAYER' && // Only show PLAYERS in this view
         (p.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
@@ -170,7 +172,12 @@ export default function AgentView({ user, games, subPlayers }) {
 
                 <Card className="border-none shadow-lg">
                     <CardHeader>
-                        <CardTitle>{t("my_club")}</CardTitle>
+                        <CardTitle className="flex justify-between items-center">
+                            <span>{t("my_club")}</span>
+                            <span className={totalBalance >= 0 ? "text-green-600" : "text-red-500"}>
+                                {t("total_balance")}: {totalBalance.toLocaleString()}
+                            </span>
+                        </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <Table>
