@@ -11,7 +11,7 @@ import { useLanguage } from "@/lib/i18n";
 import { useState } from "react";
 import { ManageUsersModal } from "./manage-users-modal";
 
-export default function ManagerView({ user, games, subPlayers }) {
+export default function AdminView({ user, games, subPlayers }) {
     const { t } = useLanguage();
     const [uploading, setUploading] = useState(false);
     const [cycleLoading, setCycleLoading] = useState(false);

@@ -25,7 +25,7 @@ export async function GET(req, { params }) {
         }
 
         // Authorization check
-        if (session.user.role !== "MANAGER") {
+        if (session.user.role !== "MANAGER" && session.user.role !== "ADMIN") {
             // Check if user is downstream
             if (targetUser.agentId !== session.user.id && targetUser.superAgentId !== session.user.id && targetUser.id !== session.user.id) {
                 // Additional check: maybe the targetUser is a player of one of this superAgent's agents

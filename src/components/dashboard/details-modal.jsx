@@ -163,7 +163,7 @@ export default function DetailsModal({ userId, isOpen, onClose, currentUser }) {
                                                             <Eye className="h-4 w-4 mr-1" />
                                                             {t("details")}
                                                         </Button>
-                                                        {(currentUser.role === "MANAGER" || currentUser.id === data.user.id) && (
+                                                        {(currentUser.role === "MANAGER" || currentUser.role === "ADMIN" || currentUser.id === data.user.id) && (
                                                             <Button
                                                                 variant="ghost"
                                                                 size="sm"
@@ -237,7 +237,7 @@ export default function DetailsModal({ userId, isOpen, onClose, currentUser }) {
                                 type="number"
                                 step="0.5"
                                 min="0"
-                                max={currentUser.role === 'MANAGER' ? 100 : currentUser.rakeback}
+                                max={(currentUser.role === 'MANAGER' || currentUser.role === 'ADMIN') ? 100 : currentUser.rakeback}
                                 value={newRakeback}
                                 onChange={(e) => setNewRakeback(e.target.value)}
                                 className="col-span-3"

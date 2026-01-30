@@ -74,11 +74,10 @@ export default function AgentView({ user, games, subPlayers }) {
     const totalBalance = filteredPlayers.reduce((sum, p) => sum + (p.balance || 0), 0);
 
     const filteredActivity = subPlayers?.filter(p =>
-        p.role === 'PLAYER' && // Only show PLAYERS in this view
-        (p.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
-            p.agent?.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
-            p.superAgent?.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
-            p.code?.toLowerCase().includes(activitySearchTerm.toLowerCase()))
+    (p.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
+        p.agent?.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
+        p.superAgent?.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
+        p.code?.toLowerCase().includes(activitySearchTerm.toLowerCase()))
     ) || [];
 
     const getSafeName = (entity) => {
@@ -88,18 +87,36 @@ export default function AgentView({ user, games, subPlayers }) {
     };
 
     const sortedActivity = [...filteredActivity].sort((a, b) => {
-        const saA = getSafeName(a.superAgent) || "ZZZZ";
-        const saB = getSafeName(b.superAgent) || "ZZZZ";
+        // 1. Sort by Club
+        const clubA = a.clubName || a.clubId || "ZZZZ";
+        const clubB = b.clubName || b.clubId || "ZZZZ";
+        if (clubA !== clubB) return clubA.localeCompare(clubB);
+
+        // 2. Identify Hierarchical Paths
+        const getSA = (u) => (u.role === 'SUPER_AGENT' ? u : u.superAgent);
+        const getAgent = (u) => (u.role === 'AGENT' ? u : u.agent);
+
+        const saA = getSafeName(getSA(a)) || "ZZZZ";
+        const saB = getSafeName(getSA(b)) || "ZZZZ";
         if (saA !== saB) return saA.localeCompare(saB);
 
-        const aA = getSafeName(a.agent) || "ZZZZ";
-        const aB = getSafeName(b.agent) || "ZZZZ";
-        if (aA !== aB) return aA.localeCompare(aB);
+        // Within same SA, sort by Role Rank (SA < AGENT < PLAYER)
+        const roleRank = { 'SUPER_AGENT': 1, 'AGENT': 2, 'PLAYER': 3 };
+        if (roleRank[a.role] !== roleRank[b.role]) return roleRank[a.role] - roleRank[b.role];
 
-        return (a.name || "").localeCompare(b.name || "");
+        // Within same role rank (Agents or Players), sort by Agent
+        if (a.role !== 'SUPER_AGENT') {
+            const agA = getSafeName(getAgent(a)) || "ZZZZ";
+            const agB = getSafeName(getAgent(b)) || "ZZZZ";
+            if (agA !== agB) return agA.localeCompare(agB);
+        }
+
+        // Within same Agent, sort by name
+        return getSafeName(a).localeCompare(getSafeName(b));
     });
 
     // Helper for grouping labels
+    let lastClubId = null;
     let lastSAId = null;
     let lastAgentId = null;
 
@@ -264,6 +281,7 @@ export default function AgentView({ user, games, subPlayers }) {
                         <Table>
                             <TableHeader>
                                 <TableRow className="hover:bg-transparent border-primary/10">
+                                    <TableHead>Club</TableHead>
                                     <TableHead>{t("super_agent")}</TableHead>
                                     <TableHead>{t("agent")}</TableHead>
                                     <TableHead>{t("player")}</TableHead>
@@ -274,24 +292,32 @@ export default function AgentView({ user, games, subPlayers }) {
                             <TableBody>
                                 {sortedActivity.map((player) => {
                                     // Grouping Logic
-                                    const saName = getSafeName(player.superAgent);
-                                    const agentName = getSafeName(player.agent);
+                                    const clubId = player.clubId || player.clubName;
+                                    const saName = player.role === 'SUPER_AGENT' ? getSafeName(player) : getSafeName(player.superAgent);
+                                    const agentName = player.role === 'AGENT' ? getSafeName(player) : getSafeName(player.agent);
 
-                                    const showSA = saName !== lastSAId;
+                                    const showClub = clubId !== lastClubId;
+                                    const showSA = (saName !== lastSAId) || showClub;
                                     const showAgent = (agentName !== lastAgentId) || showSA;
 
+                                    lastClubId = clubId;
                                     lastSAId = saName;
                                     lastAgentId = agentName;
 
                                     return (
                                         <TableRow key={player.id} className="group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                                            <TableCell className="font-medium">
+                                                {showClub ? (player.clubName || player.clubId || "-") : ""}
+                                            </TableCell>
                                             <TableCell className="font-bold text-zinc-500">
-                                                {showSA ? (saName || "-") : ""}
+                                                {showSA && saName ? saName : ""}
                                             </TableCell>
                                             <TableCell className="font-medium">
-                                                {showAgent ? (agentName || "-") : ""}
+                                                {showAgent && agentName && player.role !== 'SUPER_AGENT' ? agentName : ""}
                                             </TableCell>
-                                            <TableCell>{player.name || player.code}</TableCell>
+                                            <TableCell className={player.role !== 'PLAYER' ? "text-muted-foreground italic text-xs" : ""}>
+                                                {player.role === 'PLAYER' ? (player.name || player.code) : `(${player.role})`}
+                                            </TableCell>
                                             <TableCell className={`text-right font-bold ${player.balance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                                                 {player.balance?.toLocaleString()}
                                             </TableCell>
@@ -310,7 +336,7 @@ export default function AgentView({ user, games, subPlayers }) {
                                 })}
                                 {sortedActivity.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center py-10 text-muted-foreground italic">
+                                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground italic">
                                             No activity found.
                                         </TableCell>
                                     </TableRow>
@@ -327,7 +353,7 @@ export default function AgentView({ user, games, subPlayers }) {
                         <DialogTitle>{t("set_rakeback")}</DialogTitle>
                         <DialogDescription>
                             Update rakeback for player {selectedPlayer?.code}.
-                            {user.role !== 'MANAGER' && ` Max allowed: ${user.rakeback}%`}
+                            {(user.role !== 'MANAGER' && user.role !== 'ADMIN') && ` Max allowed: ${user.rakeback}%`}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -340,7 +366,7 @@ export default function AgentView({ user, games, subPlayers }) {
                                 type="number"
                                 step="0.5"
                                 min="0"
-                                max={user.role === 'MANAGER' ? 100 : user.rakeback}
+                                max={(user.role === 'MANAGER' || user.role === 'ADMIN') ? 100 : user.rakeback}
                                 value={newRakeback}
                                 onChange={(e) => setNewRakeback(e.target.value)}
                                 className="col-span-3"

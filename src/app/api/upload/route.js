@@ -6,8 +6,8 @@ import { parseAndImport } from "@/lib/excel-parser";
 export async function POST(req) {
     const session = await getServerSession(authOptions);
 
-    // Authorization: Only Manager
-    if (!session || session.user.role !== "MANAGER") {
+    // Authorization: Only Admin
+    if (!session || session.user.role !== "ADMIN") {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

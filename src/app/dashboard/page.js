@@ -3,7 +3,8 @@ import { authOptions } from "../api/auth/[...nextauth]/route";
 import prisma from "@/lib/prisma";
 import PlayerView from "@/components/dashboard/player-view";
 import AgentView from "@/components/dashboard/agent-view";
-import ManagerView from "@/components/dashboard/manager-view";
+
+import AdminView from "@/components/dashboard/admin-view";
 import { redirect } from "next/navigation";
 
 export const dynamic = 'force-dynamic';
@@ -46,19 +47,34 @@ export default async function DashboardPage() {
     // Role Based Data Fetching
     let subPlayers = [];
 
-    if (user.role === "AGENT" || user.role === "SUPER_AGENT" || user.role === "MANAGER") {
-        const where = user.role === "MANAGER" ? {} : {
-            OR: [
-                { agentId: user.id },
-                { superAgentId: user.id }
-            ]
-        };
+    if (["AGENT", "SUPER_AGENT", "MANAGER", "ADMIN"].includes(user.role)) {
+        let where = {};
+
+        if (user.role === "ADMIN") {
+            where = {}; // Admin sees all
+        } else if (user.role === "MANAGER") {
+            // Manager sees only their club. 
+            // If clubId is null, they might see nothing or unassigned? 
+            // Best to assume they see matching clubId.
+            // If clubId is null for manager, they see nothing? Or unassigned users?
+            // Let's assume where clubId matches.
+            where = { clubId: user.clubId };
+        } else {
+            // Agents
+            where = {
+                OR: [
+                    { agentId: user.id },
+                    { superAgentId: user.id }
+                ]
+            };
+        }
 
         const rawSubPlayers = await prisma.user.findMany({
             where,
             include: {
                 agent: { select: { name: true, code: true } },
                 superAgent: { select: { name: true, code: true } },
+
                 gameSessions: {
                     where: { cycleId: currentCycleId },
                     select: { rake: true }
@@ -80,9 +96,9 @@ export default async function DashboardPage() {
     }
 
     // Render View
-    if (user.role === "MANAGER") {
-        return <ManagerView user={user} games={games} subPlayers={subPlayers} />;
-    } else if (user.role === "AGENT" || user.role === "SUPER_AGENT") {
+    if (user.role === "ADMIN") {
+        return <AdminView user={user} games={games} subPlayers={subPlayers} />;
+    } else if (["MANAGER", "SUPER_AGENT", "AGENT"].includes(user.role)) {
         return <AgentView user={user} games={games} subPlayers={subPlayers} />;
     } else {
         return <PlayerView user={user} games={games} />;

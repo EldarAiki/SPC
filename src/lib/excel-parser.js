@@ -23,12 +23,32 @@ export async function parseAndImport(buffer) {
     let importedUsers = 0;
 
     if (memberSheet) {
+
+
         // 1. Read all rows into a Map to deduplicate immediately
         // We use a Map to ensure we only process each unique User Code once
-        const uniqueUsers = new Map(); // Key: Code, Value: { name, role, parentCode }
+        const uniqueUsers = new Map(); // Key: Code, Value: { name, role, parentCode, clubId, clubName }
+
+        let currentClubId = null;
+        let currentClubName = null;
 
         memberSheet.eachRow((row, rowNumber) => {
             if (rowNumber < 7) return;
+
+            // Extract Club Info from this specific row (Column A or B)
+            const cellValA = row.getCell(1).value?.toString() || "";
+            const cellValB = row.getCell(2).value?.toString() || "";
+
+            const clubMatchA = cellValA.match(/(.*?)\s*\(ID:(\d+)\)/);
+            const clubMatchB = cellValB.match(/(.*?)\s*\(ID:(\d+)\)/);
+
+            if (clubMatchA) {
+                currentClubName = clubMatchA[1].trim();
+                currentClubId = clubMatchA[2];
+            } else if (clubMatchB) {
+                currentClubName = clubMatchB[1].trim();
+                currentClubId = clubMatchB[2];
+            }
 
             const saId = row.getCell(3).value?.toString()?.trim();
             const saName = row.getCell(4).value?.toString()?.trim();
@@ -37,9 +57,26 @@ export async function parseAndImport(buffer) {
             const playerId = row.getCell(9).value?.toString()?.trim();
             const playerName = row.getCell(10).value?.toString()?.trim();
 
-            if (saId && saId !== '0') uniqueUsers.set(saId, { code: saId, name: saName, role: 'SUPER_AGENT', parentCode: null });
-            if (agentId) uniqueUsers.set(agentId, { code: agentId, name: agentName, role: 'AGENT', parentCode: saId !== '0' ? saId : null });
-            if (playerId) uniqueUsers.set(playerId, { code: playerId, name: playerName, role: 'PLAYER', parentCode: agentId });
+            const setIfNew = (code, name, role, parentCode, superAgentCode) => {
+                if (!code || code === '0') return;
+                const existing = uniqueUsers.get(code);
+                // Update if it doesn't exist OR if we have new club info for this code
+                if (!existing || currentClubId) {
+                    uniqueUsers.set(code, {
+                        code,
+                        name: name || existing?.name,
+                        role,
+                        parentCode: parentCode || existing?.parentCode,
+                        superAgentCode: superAgentCode || existing?.superAgentCode,
+                        clubId: currentClubId || existing?.clubId,
+                        clubName: currentClubName || existing?.clubName
+                    });
+                }
+            };
+
+            setIfNew(saId, saName, 'SUPER_AGENT', null, null);
+            setIfNew(agentId, agentName, 'AGENT', saId !== '0' ? saId : null, saId !== '0' ? saId : null);
+            setIfNew(playerId, playerName, 'PLAYER', agentId, saId !== '0' ? saId : null);
         });
 
         const allUserCodes = Array.from(uniqueUsers.keys());
@@ -72,7 +109,9 @@ export async function parseAndImport(buffer) {
                     code: u.code,
                     name: u.name,
                     role: u.role,
-                    balance: 0 // Default
+                    balance: 0, // Default
+                    clubId: u.clubId, // Set Club ID
+                    clubName: u.clubName // Set Club Name
                 })),
                 skipDuplicates: true
             });
@@ -95,15 +134,18 @@ export async function parseAndImport(buffer) {
         const updatePromises = allUsersList.map(u => {
             const dbId = codeToId.get(u.code);
             const parentId = u.parentCode ? codeToId.get(u.parentCode) : null;
+            const saId = u.superAgentCode ? codeToId.get(u.superAgentCode) : null;
 
             // Only update if we have a parent to link or name changed
             return prisma.user.update({
                 where: { id: dbId },
                 data: {
                     name: u.name,
+                    clubId: u.clubId, // Ensure Club ID is updated/set
+                    clubName: u.clubName, // Ensure Club Name is updated/set
                     // Determine relation field based on role logic
                     agentId: (u.role === 'PLAYER' && parentId) ? parentId : undefined,
-                    superAgentId: (u.role === 'AGENT' && parentId) ? parentId : undefined
+                    superAgentId: (u.role === 'AGENT' && parentId) ? parentId : (saId || undefined)
                 }
             });
         });
