@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Download, Search, Settings2, Eye, RefreshCw } from "lucide-react";
+import { Download, Search, Settings2, Eye, RefreshCw, ChevronRight, ChevronDown, Users } from "lucide-react";
 import PlayerView from "./player-view";
 import { useLanguage } from "@/lib/i18n";
 import ExcelJS from "exceljs";
@@ -35,6 +35,19 @@ export default function AgentView({ user, games, subPlayers }) {
     const [newRakeback, setNewRakeback] = useState("");
     const [updating, setUpdating] = useState(false);
     const [detailUserId, setDetailUserId] = useState(null);
+    const [drilledUserId, setDrilledUserId] = useState(null);
+    const [expandedNodes, setExpandedNodes] = useState(new Set());
+
+    const toggleNode = (nodeId) => {
+        const newExpanded = new Set(expandedNodes);
+        if (newExpanded.has(nodeId)) {
+            newExpanded.delete(nodeId);
+        } else {
+            newExpanded.add(nodeId);
+        }
+        setExpandedNodes(newExpanded);
+    };
+
     const [activitySearchTerm, setActivitySearchTerm] = useState("");
 
     const handleUpdateRakeback = async () => {
@@ -73,12 +86,246 @@ export default function AgentView({ user, games, subPlayers }) {
 
     const totalBalance = filteredPlayers.reduce((sum, p) => sum + (p.balance || 0), 0);
 
-    const filteredActivity = subPlayers?.filter(p =>
-    (p.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
-        p.agent?.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
-        p.superAgent?.name?.toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
-        p.code?.toLowerCase().includes(activitySearchTerm.toLowerCase()))
-    ) || [];
+    // 1. Build the Hierarchy Tree
+    const buildHierarchy = () => {
+        const nodes = new Map();
+        const clubs = {};
+
+        // 1. First pass: Ensure all nodes exist in the map
+        subPlayers?.forEach(u => {
+            const id = u.id || u.code;
+            if (!id) return;
+
+            if (!nodes.has(id)) {
+                nodes.set(id, {
+                    ...u,
+                    id,
+                    type: u.role || 'PLAYER',
+                    children: [],
+                    personalBalance: u.balance || 0,
+                    groupBalance: 0,
+                    totalRake: (u.totalRakebackAmount || 0),
+                    rakeback: u.rakeback || 0,
+                    _parentFound: false
+                });
+            } else {
+                // Update existing placeholder with real data
+                const existing = nodes.get(id);
+                Object.assign(existing, u);
+                if (u.role) existing.type = u.role;
+                existing.personalBalance = u.balance || 0;
+                existing.totalRake = (u.totalRakebackAmount || 0);
+                existing.rakeback = u.rakeback || 0;
+            }
+
+            // Ensure Club exists
+            if (u.clubId && !clubs[u.clubId]) {
+                clubs[u.clubId] = {
+                    id: u.clubId,
+                    code: u.clubId,
+                    name: u.clubName || u.clubId,
+                    type: 'CLUB',
+                    children: [],
+                    personalBalance: 0,
+                    groupBalance: 0,
+                    totalRake: 0,
+                    rakeback: 0,
+                    _parentFound: true // Clubs are root
+                };
+            }
+        });
+
+        // 2. Second pass: Establish parent-child relationships
+        nodes.forEach(node => {
+            let parent = null;
+
+            if (node.type === 'PLAYER') {
+                if (node.agentId && nodes.has(node.agentId)) parent = nodes.get(node.agentId);
+                else if (node.superAgentId && nodes.has(node.superAgentId)) parent = nodes.get(node.superAgentId);
+                else if (node.clubId && clubs[node.clubId]) parent = clubs[node.clubId];
+            } else if (node.type === 'AGENT') {
+                if (node.superAgentId && nodes.has(node.superAgentId)) parent = nodes.get(node.superAgentId);
+                else if (node.clubId && clubs[node.clubId]) parent = clubs[node.clubId];
+            } else if (node.type === 'SUPER_AGENT') {
+                if (node.clubId && clubs[node.clubId]) parent = clubs[node.clubId];
+            }
+
+            if (parent && parent !== node) {
+                if (!parent.children.find(c => c.id === node.id)) {
+                    parent.children.push(node);
+                    node._parentFound = true;
+                }
+            }
+        });
+
+        // 3. Third pass: Ensure orphans are attached to something (e.g. Club)
+        nodes.forEach(node => {
+            if (!node._parentFound && node.clubId && clubs[node.clubId]) {
+                clubs[node.clubId].children.push(node);
+                node._parentFound = true;
+            }
+        });
+
+        // Aggregation Logic
+        const aggregate = (node) => {
+            let gBalance = node.personalBalance || 0;
+            let gRake = node.totalRake || 0;
+
+            node.children.forEach(child => {
+                const { groupBalance, totalRake } = aggregate(child);
+                gBalance += groupBalance;
+                gRake += totalRake;
+            });
+
+            node.groupBalance = gBalance;
+            node.totalRake = gRake;
+            return { groupBalance: gBalance, totalRake: gRake };
+        };
+
+        Object.values(clubs).forEach(aggregate);
+
+        // Filter Logic
+        const filterTree = (nodes) => {
+            if (!activitySearchTerm) return nodes;
+            return nodes.filter(node => {
+                const matches = (node.name || "").toLowerCase().includes(activitySearchTerm.toLowerCase()) ||
+                    (node.code || "").toLowerCase().includes(activitySearchTerm.toLowerCase());
+
+                // Recursively filter children
+                const filteredChildren = filterTree(node.children || []);
+                const hasMatchingChildren = filteredChildren.length > 0;
+
+                if (hasMatchingChildren) {
+                    node.children = filteredChildren;
+                }
+
+                return matches || hasMatchingChildren;
+            });
+        };
+
+        // Filter and Clean result
+        let result = Object.values(clubs).filter(c =>
+            (c.name && c.name !== "Unknown Club" && c.id) ||
+            (c.children && c.children.length > 0)
+        );
+
+        if (activitySearchTerm) {
+            // We need to clone nodes if we are going to modify children for filtering
+            const clone = (n) => ({ ...n, children: n.children.map(clone) });
+            result = filterTree(result.map(clone));
+        }
+
+        // Drilling Logic
+        if (drilledUserId) {
+            const findNode = (list, id) => {
+                for (const n of list) {
+                    if (n.id === id) return n;
+                    if (n.children) {
+                        const found = findNode(n.children, id);
+                        if (found) return found;
+                    }
+                }
+                return null;
+            };
+            const foundNode = findNode(Object.values(clubs), drilledUserId);
+            return foundNode ? [foundNode] : result;
+        }
+
+        return result;
+    };
+
+    const hierarchy = buildHierarchy();
+
+    const HierarchyRow = ({ node, level = 0 }) => {
+        const hasChildren = node.children && node.children.length > 0;
+        const name = node.name || node.code || "N/A";
+        const isManagement = node.type !== 'PLAYER';
+
+        return (
+            <>
+                <TableRow className={`group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50 ${level === 0 ? 'bg-zinc-50/10 font-bold' : ''}`}>
+                    <TableCell style={{ paddingLeft: `${level * 24 + 12}px` }} className="font-medium">
+                        <div className="flex items-center gap-2">
+                            {isManagement ? (
+                                <div className={`p-1.5 rounded ${node.type === 'CLUB' ? 'bg-amber-100 text-amber-700' :
+                                    node.type === 'SUPER_AGENT' ? 'bg-purple-100 text-purple-700' :
+                                        'bg-blue-100 text-blue-700'
+                                    }`}>
+                                    <Users className="h-3 w-3" />
+                                </div>
+                            ) : (
+                                <div className="w-6" />
+                            )}
+                            <div className="flex flex-col">
+                                <span className="flex items-center gap-2 text-sm">
+                                    {name}
+                                    {isManagement && (
+                                        <span className="text-[10px] uppercase opacity-60 font-black px-1.5 py-0.5 rounded border border-current">
+                                            {node.type === 'SUPER_AGENT' ? 'SA' : node.type}
+                                        </span>
+                                    )}
+                                </span>
+                                {isManagement && node.code && <span className="text-[10px] text-muted-foreground font-normal">{node.code}</span>}
+                            </div>
+                        </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                        <div className="flex flex-col items-end">
+                            <span className={`font-bold tabular-nums ${node.personalBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                {isManagement ? (
+                                    <>
+                                        Total: {node.groupBalance.toLocaleString()}
+                                        <span className="text-[10px] block text-muted-foreground font-normal">
+                                            (Personal: {node.personalBalance.toLocaleString()})
+                                        </span>
+                                    </>
+                                ) : (
+                                    node.personalBalance.toLocaleString()
+                                )}
+                            </span>
+                        </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                        <div className="flex flex-col items-end">
+                            <span className="text-blue-600 font-semibold tabular-nums">
+                                {node.totalRake?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-xs text-muted-foreground font-normal">
+                                ({node.rakeback}%)
+                            </span>
+                        </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                        {isManagement && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDrilledUserId(node.id === drilledUserId ? null : node.id)}
+                                className={`h-8 px-2 ${node.id === drilledUserId ? 'bg-blue-50 text-blue-600' : ''}`}
+                            >
+                                <Eye className="h-4 w-4 mr-1" />
+                                {node.id === drilledUserId ? "Reset" : "⤷"}
+                            </Button>
+                        )}
+                        {!isManagement && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-zinc-600 hover:text-zinc-700 hover:bg-zinc-100"
+                                onClick={() => setDetailUserId(node.id)}
+                            >
+                                <Eye className="h-4 w-4 mr-1" />
+                                {t("details")}
+                            </Button>
+                        )}
+                    </TableCell>
+                </TableRow>
+                {hasChildren && node.children.map(child => (
+                    <HierarchyRow key={child.id} node={child} level={level + 1} />
+                ))}
+            </>
+        );
+    };
 
     const getSafeName = (entity) => {
         if (!entity) return "";
@@ -86,39 +333,6 @@ export default function AgentView({ user, games, subPlayers }) {
         return entity.code || "";
     };
 
-    const sortedActivity = [...filteredActivity].sort((a, b) => {
-        // 1. Sort by Club
-        const clubA = a.clubName || a.clubId || "ZZZZ";
-        const clubB = b.clubName || b.clubId || "ZZZZ";
-        if (clubA !== clubB) return clubA.localeCompare(clubB);
-
-        // 2. Identify Hierarchical Paths
-        const getSA = (u) => (u.role === 'SUPER_AGENT' ? u : u.superAgent);
-        const getAgent = (u) => (u.role === 'AGENT' ? u : u.agent);
-
-        const saA = getSafeName(getSA(a)) || "ZZZZ";
-        const saB = getSafeName(getSA(b)) || "ZZZZ";
-        if (saA !== saB) return saA.localeCompare(saB);
-
-        // Within same SA, sort by Role Rank (SA < AGENT < PLAYER)
-        const roleRank = { 'SUPER_AGENT': 1, 'AGENT': 2, 'PLAYER': 3 };
-        if (roleRank[a.role] !== roleRank[b.role]) return roleRank[a.role] - roleRank[b.role];
-
-        // Within same role rank (Agents or Players), sort by Agent
-        if (a.role !== 'SUPER_AGENT') {
-            const agA = getSafeName(getAgent(a)) || "ZZZZ";
-            const agB = getSafeName(getAgent(b)) || "ZZZZ";
-            if (agA !== agB) return agA.localeCompare(agB);
-        }
-
-        // Within same Agent, sort by name
-        return getSafeName(a).localeCompare(getSafeName(b));
-    });
-
-    // Helper for grouping labels
-    let lastClubId = null;
-    let lastSAId = null;
-    let lastAgentId = null;
 
     const handleDownloadReport = async () => {
         const workbook = new ExcelJS.Workbook();
@@ -281,62 +495,19 @@ export default function AgentView({ user, games, subPlayers }) {
                         <Table>
                             <TableHeader>
                                 <TableRow className="hover:bg-transparent border-primary/10">
-                                    <TableHead>Club</TableHead>
-                                    <TableHead>{t("super_agent")}</TableHead>
-                                    <TableHead>{t("agent")}</TableHead>
-                                    <TableHead>{t("player")}</TableHead>
-                                    <TableHead className="text-right">{t("balance")}</TableHead>
-                                    <TableHead className="text-right">{t("total_rakeback_amount")}</TableHead>
+                                    <TableHead>User / Group</TableHead>
+                                    <TableHead className="text-right">Balance</TableHead>
+                                    <TableHead className="text-right">Rakeback</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {sortedActivity.map((player) => {
-                                    // Grouping Logic
-                                    const clubId = player.clubId || player.clubName;
-                                    const saName = player.role === 'SUPER_AGENT' ? getSafeName(player) : getSafeName(player.superAgent);
-                                    const agentName = player.role === 'AGENT' ? getSafeName(player) : getSafeName(player.agent);
-
-                                    const showClub = clubId !== lastClubId;
-                                    const showSA = (saName !== lastSAId) || showClub;
-                                    const showAgent = (agentName !== lastAgentId) || showSA;
-
-                                    lastClubId = clubId;
-                                    lastSAId = saName;
-                                    lastAgentId = agentName;
-
-                                    return (
-                                        <TableRow key={player.id} className="group transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                                            <TableCell className="font-medium">
-                                                {showClub ? (player.clubName || player.clubId || "-") : ""}
-                                            </TableCell>
-                                            <TableCell className="font-bold text-zinc-500">
-                                                {showSA && saName ? saName : ""}
-                                            </TableCell>
-                                            <TableCell className="font-medium">
-                                                {showAgent && agentName && player.role !== 'SUPER_AGENT' ? agentName : ""}
-                                            </TableCell>
-                                            <TableCell className={player.role !== 'PLAYER' ? "text-muted-foreground italic text-xs" : ""}>
-                                                {player.role === 'PLAYER' ? (player.name || player.code) : `(${player.role})`}
-                                            </TableCell>
-                                            <TableCell className={`text-right font-bold ${player.balance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                                {player.balance?.toLocaleString()}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <div className="flex flex-col items-end">
-                                                    <span className="text-blue-600 font-semibold">
-                                                        {player.totalRakebackAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    </span>
-                                                    <span className="text-xs text-muted-foreground">
-                                                        ({player.rakeback}%)
-                                                    </span>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    );
-                                })}
-                                {sortedActivity.length === 0 && (
+                                {hierarchy.map((node) => (
+                                    <HierarchyRow key={node.id} node={node} />
+                                ))}
+                                {hierarchy.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground italic">
+                                        <TableCell colSpan={4} className="text-center py-10 text-muted-foreground italic">
                                             No activity found.
                                         </TableCell>
                                     </TableRow>
