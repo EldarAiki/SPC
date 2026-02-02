@@ -1,7 +1,11 @@
-import ExcelJS from 'exceljs';
-import prisma from './prisma';
 
-// Helper to process promises in chunks to prevent DB connection pool exhaustion
+import { PrismaClient } from '@prisma/client';
+import ExcelJS from 'exceljs';
+import fs from 'fs/promises';
+
+const prisma = new PrismaClient();
+
+// Helper to process promises in chunks
 async function runInChunks(items, chunkSize, asyncCallback) {
     const results = [];
     for (let i = 0; i < items.length; i += chunkSize) {
@@ -12,22 +16,18 @@ async function runInChunks(items, chunkSize, asyncCallback) {
     return results;
 }
 
-export async function parseAndImport(buffer) {
+async function testParseAndImport(buffer) {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
 
     let importedUsers = 0;
     let importedGames = 0;
 
-    // ==================================================
-    // 0. DATE & CYCLE PREPARATION
-    // ==================================================
     const memberSheet = workbook.getWorksheet('Union Member Statistics');
     const mttSheet = workbook.getWorksheet('Union MTT Detail');
 
     if (!memberSheet) throw new Error("Sheet 'Union Member Statistics' not found.");
 
-    // Extract Date from Row 1
     const dateCell = memberSheet.getCell('A1').value;
     let sessionDate = new Date();
     if (dateCell) {
@@ -39,7 +39,6 @@ export async function parseAndImport(buffer) {
     const dateStart = new Date(sessionDate); dateStart.setHours(0, 0, 0, 0);
     const dateEnd = new Date(sessionDate); dateEnd.setHours(23, 59, 59, 999);
 
-    // Ensure Cycle Exists
     let currentCycle = await prisma.cycle.findFirst({
         where: { status: 'OPEN' },
         orderBy: { startDate: 'desc' }
@@ -51,19 +50,13 @@ export async function parseAndImport(buffer) {
         });
     }
 
-    // ==================================================
-    // 1. IMPORT USERS & SUMMARY SESSIONS (Union Member Statistics)
-    // ==================================================
-    const uniqueUsers = new Map(); // Key: Code, Value: { ...data }
-    const memberSessions = []; // To hold cash game sessions (Total - MTT)
-
+    const uniqueUsers = new Map();
+    const memberSessions = [];
     let currentClubId = null;
     let currentClubName = null;
 
     memberSheet.eachRow((row, rowNumber) => {
         if (rowNumber < 7) return;
-
-        // Extract Club Info
         const cellValA = row.getCell(1).value?.toString() || "";
         const cellValB = row.getCell(2).value?.toString() || "";
         const clubMatchA = cellValA.match(/(.*?)\s*\(ID:(\d+)\)/);
@@ -107,12 +100,11 @@ export async function parseAndImport(buffer) {
         setIfNew(agentId, agentName, 'AGENT', saId !== '-' ? saId : null, saId !== '-' ? saId : null);
         setIfNew(playerId, playerName, 'PLAYER', agentId, saId !== '-' ? saId : null);
 
-        // Extract Session Data (Cash Games = Total - MTT)
         if (playerId && playerId !== '-' && playerId.toLowerCase() !== 'total') {
             const totalPnl = parseFloat(row.getCell(38).value || 0);
-            const mttPnl = parseFloat(row.getCell(30).value || 0); // Player P&L > MTT > Total
+            const mttPnl = parseFloat(row.getCell(30).value || 0);
             const totalRake = parseFloat(row.getCell(65).value || 0);
-            const mttRake = parseFloat(row.getCell(57).value || 0); // Rake&Fee > MTT > Total
+            const mttRake = parseFloat(row.getCell(57).value || 0);
 
             const cashPnl = totalPnl - mttPnl;
             const cashRake = totalRake - mttRake;
@@ -123,13 +115,12 @@ export async function parseAndImport(buffer) {
                     pnl: cashPnl,
                     rake: cashRake,
                     tableName: 'Cash Games',
-                    hands: parseInt(row.getCell(152).value || 0) - parseInt(row.getCell(144).value || 0) // Total Hands - MTT Hands
+                    hands: parseInt(row.getCell(152).value || 0) - parseInt(row.getCell(144).value || 0)
                 });
             }
         }
     });
 
-    // Bulk Sync Users (Same logic as before)
     const allUserCodes = Array.from(uniqueUsers.keys());
     const existingUsers = await prisma.user.findMany({
         where: { code: { in: allUserCodes } },
@@ -156,7 +147,6 @@ export async function parseAndImport(buffer) {
         importedUsers += usersToCreate.length;
     }
 
-    //建立 Hierarchy
     const finalUserFetch = await prisma.user.findMany({
         where: { code: { in: allUserCodes } },
         select: { id: true, code: true }
@@ -181,9 +171,6 @@ export async function parseAndImport(buffer) {
     });
     await runInChunks(updatePromises, 50, (p) => p);
 
-    // ==================================================
-    // 2. IMPORT MTT SESSIONS (Union MTT Detail)
-    // ==================================================
     const mttSessions = [];
     if (mttSheet) {
         let currentTournament = 'Tournament';
@@ -194,14 +181,10 @@ export async function parseAndImport(buffer) {
                 return;
             }
             if (rowNumber < 8) return;
-
             const playerNickname = row.getCell(4).value?.toString()?.toLowerCase();
             if (playerNickname === 'total' || !playerNickname) return;
-
             const playerId = row.getCell(3).value?.toString()?.trim();
             const pnl = parseFloat(row.getCell(17).value || 0);
-
-            // Rake: Sum of Fee (7, 8, 11, 12)
             const rake = (parseFloat(row.getCell(7).value) || 0) +
                 (parseFloat(row.getCell(8).value) || 0) +
                 (parseFloat(row.getCell(11).value) || 0) +
@@ -219,12 +202,7 @@ export async function parseAndImport(buffer) {
         });
     }
 
-    // ==================================================
-    // 3. UNIFIED SESSION SAVING & BALANCE REVERT
-    // ==================================================
     const allSessions = [...memberSessions, ...mttSessions];
-
-    // Revert existing sessions for this date
     const sessionsToDelete = await prisma.gameSession.groupBy({
         by: ['userId'],
         where: { date: { gte: dateStart, lte: dateEnd } },
@@ -244,7 +222,6 @@ export async function parseAndImport(buffer) {
         where: { date: { gte: dateStart, lte: dateEnd } }
     });
 
-    // Insert new sessions
     const sessionsToInsert = [];
     const userBalanceUpdates = {};
 
@@ -255,14 +232,13 @@ export async function parseAndImport(buffer) {
                 userId: dbUserId,
                 date: sessionDate,
                 tableName: session.tableName,
-                buyIn: 0, // Not explicitly tracked in summary
+                buyIn: 0,
                 cashOut: 0,
                 pnl: session.pnl,
                 hands: session.hands,
                 rake: session.rake,
                 cycleId: currentCycle.id
             });
-
             if (!userBalanceUpdates[dbUserId]) userBalanceUpdates[dbUserId] = 0;
             userBalanceUpdates[dbUserId] += session.pnl;
         }
@@ -273,7 +249,6 @@ export async function parseAndImport(buffer) {
         importedGames = sessionsToInsert.length;
     }
 
-    // Update balances
     const balanceUpdatesArray = Object.entries(userBalanceUpdates).map(([userId, netPnl]) => ({ userId, netPnl }));
     await runInChunks(balanceUpdatesArray, 50, async (item) => {
         if (item.netPnl !== 0) {
@@ -284,17 +259,19 @@ export async function parseAndImport(buffer) {
         }
     });
 
-    // Log success
-    try {
-        await prisma.importLog.create({
-            data: {
-                fileName: "Excel Upload",
-                periodStart: dateStart,
-                periodEnd: dateEnd,
-                status: "SUCCESS"
-            }
-        });
-    } catch (e) { console.error("Failed to create ImportLog", e); }
-
     return { users: importedUsers, games: importedGames };
 }
+
+async function run() {
+    try {
+        const buffer = await fs.readFile('d:/Dev/SPC/example_data/t(1).xlsx');
+        const result = await testParseAndImport(buffer);
+        console.log("Import Successful:", result);
+    } catch (e) {
+        console.error("Import Failed:", e);
+    } finally {
+        await prisma.$disconnect();
+    }
+}
+
+run();
