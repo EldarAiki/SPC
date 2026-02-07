@@ -32,7 +32,7 @@ const dictionary = {
         table: "Table",
         buy_in: "Buy-in",
         cash_out: "Cash-out",
-        pnl: "P&L",
+        pnl: "Total",
         status: "Status",
         actions: "Actions",
 

@@ -271,7 +271,7 @@ export default function AgentView({ user, games, subPlayers }) {
                     </TableCell>
                     <TableCell className="text-right">
                         <div className="flex flex-col items-end">
-                            <span className={`font-bold tabular-nums ${node.personalBalance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            <span className={`font-bold tabular-nums ${(isManagement ? node.groupBalance : node.personalBalance) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                                 {isManagement ? (
                                     <>
                                         Total: {node.groupBalance.toLocaleString()}
