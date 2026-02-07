@@ -109,7 +109,7 @@ export default function AgentView({ user, games, subPlayers }) {
                     _parentFound: false
                 });
             } else {
-                // Update existing placeholder with real data
+                // Update existing placeholder with actual data
                 const existing = nodes.get(id);
                 Object.assign(existing, u);
                 if (u.role) existing.type = u.role;
